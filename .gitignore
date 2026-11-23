@@ -1,0 +1,33 @@
+# secrets and local configuration
+.env
+.env.*
+!.env.example
+
+# python
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+.pytest_cache/
+.ruff_cache/
+.mypy_cache/
+
+# local indexes, caches, logs and eval outputs (all rebuildable)
+indexes/
+cache/
+logs/
+eval_out/
+*.db
+*.sqlite
+*.npy
+
+# generated artefacts
+openapi.json
+
+# node (none used, just in case)
+node_modules/
+
+# os / editor
+.DS_Store
+.idea/
+.vscode/

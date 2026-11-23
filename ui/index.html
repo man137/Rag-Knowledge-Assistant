@@ -1,0 +1,316 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>RAG Knowledge Assistant — Aurora Atlas Events (demo)</title>
+<style>
+  :root {
+    --bg: #0f1420; --panel: #171e2e; --line: #2a3550; --text: #e8ecf5;
+    --muted: #9aa7c0; --accent: #4f8cff; --ok: #2fbf71; --bad: #ff6b6b;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0; background: var(--bg); color: var(--text);
+    font-family: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+    line-height: 1.55;
+  }
+  .wrap { max-width: 760px; margin: 0 auto; padding: clamp(0.75rem, 3vw, 2rem); }
+  h1 { font-size: clamp(1.25rem, 4vw, 1.8rem); margin: 0.2rem 0 0.2rem; }
+  .sub { color: var(--muted); font-size: clamp(0.8rem, 2.5vw, 0.95rem); margin: 0 0 1.2rem; }
+  .card {
+    background: var(--panel); border: 1px solid var(--line);
+    border-radius: 12px; padding: clamp(0.75rem, 3vw, 1.25rem); margin-bottom: 1rem;
+  }
+  label { display: block; font-size: 0.8rem; color: var(--muted); margin-bottom: 0.25rem; }
+  input[type="text"], input[type="password"], select, textarea {
+    width: 100%; padding: 0.55rem 0.7rem; border-radius: 8px; border: 1px solid var(--line);
+    background: #0d1220; color: var(--text); font: inherit;
+  }
+  textarea { min-height: 84px; resize: vertical; }
+  .row { display: flex; gap: 0.75rem; flex-wrap: wrap; }
+  .row > div { flex: 1 1 140px; }
+  button {
+    font: inherit; font-weight: 600; border: 0; border-radius: 8px; cursor: pointer;
+    padding: 0.6rem 1.1rem; background: var(--accent); color: #fff;
+  }
+  button:disabled { opacity: 0.5; cursor: not-allowed; }
+  button.ghost { background: transparent; border: 1px solid var(--line); color: var(--muted); }
+  #answer { white-space: pre-wrap; min-height: 1.5rem; }
+  #status { font-size: 0.85rem; color: var(--muted); min-height: 1.2rem; }
+  .status-error { color: var(--bad); }
+  .src { border-top: 1px solid var(--line); padding: 0.6rem 0; }
+  .src summary { cursor: pointer; font-size: 0.85rem; color: var(--accent); }
+  .src .meta { color: var(--muted); font-size: 0.75rem; margin: 0.15rem 0 0.3rem; }
+  .src .snippet { font-size: 0.85rem; color: var(--muted); }
+  .pill { display: inline-block; padding: 0.05rem 0.5rem; border-radius: 999px;
+          background: #0d1220; border: 1px solid var(--line); font-size: 0.72rem; }
+  .feedback button { background: transparent; border: 1px solid var(--line);
+                     color: var(--muted); margin-right: 0.5rem; }
+  .feedback button.on-up { color: var(--ok); border-color: var(--ok); }
+  .feedback button.on-down { color: var(--bad); border-color: var(--bad); }
+  .hint { color: var(--muted); font-size: 0.75rem; }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <h1>RAG Knowledge Assistant</h1>
+  <p class="sub">Synthetic events &amp; travel knowledge base — hand-built hybrid retrieval
+     (dense + BM25 + RRF), role-based access control and validated citations.
+     Streaming over SSE.</p>
+
+  <div class="card">
+    <label for="pdf-files" style="font-weight:600; color:var(--text); margin-bottom:0.4rem">📄 Add Any Document (PDF / Markdown / TXT)</label>
+    <p class="hint" style="margin-bottom:0.6rem">Upload any PDF or policy document. The system will chunk, embed, and index it so you can ask questions from it directly.</p>
+    <div style="display:flex; gap:0.5rem; align-items:center; flex-wrap:wrap">
+      <input type="file" id="pdf-files" multiple accept=".pdf,.md,.txt" style="flex:1; padding:0.45rem; background:#0d1220; border:1px dashed var(--line); border-radius:8px">
+      <button id="upload-btn" class="ghost" style="white-space:nowrap">Upload &amp; Index</button>
+    </div>
+    <div style="display:flex; justify-content:space-between; align-items:center; margin-top:0.4rem; flex-wrap:wrap; gap:0.5rem">
+      <span id="upload-status" class="hint"></span>
+      <label style="font-size:0.75rem; color:var(--muted); margin:0; display:flex; align-items:center; gap:0.3rem">
+        <input type="checkbox" id="rebuild-index" style="width:auto"> Replace existing index
+      </label>
+    </div>
+  </div>
+
+  <div class="card">
+    <div class="row">
+      <div>
+        <label for="role">Your role (demo)</label>
+        <select id="role">
+          <option value="guest">guest</option>
+          <option value="staff">staff</option>
+          <option value="manager">manager</option>
+          <option value="hr">hr</option>
+        </select>
+      </div>
+      <div>
+        <label for="mode">Retrieval mode</label>
+        <select id="mode">
+          <option value="hybrid">hybrid (RRF)</option>
+          <option value="dense">dense</option>
+          <option value="bm25">bm25</option>
+          <option value="hybrid_rerank">hybrid + rerank</option>
+        </select>
+      </div>
+    </div>
+    <div style="margin-top:0.75rem">
+      <label for="apikey">API key (from .env, X-API-Key)</label>
+      <input type="password" id="apikey" placeholder="leave empty if auth disabled">
+    </div>
+    <div style="margin-top:0.75rem">
+      <label for="question">Question</label>
+      <textarea id="question" placeholder="What is the refund rule for event cancellation?"></textarea>
+    </div>
+    <div class="row" style="margin-top:0.75rem; align-items:center">
+      <button id="ask">Ask</button>
+      <button id="stop" class="ghost" disabled>Stop</button>
+      <span id="status"></span>
+    </div>
+  </div>
+
+  <div class="card" id="answer-card" hidden>
+    <div id="answer"></div>
+    <div class="feedback" id="feedback" hidden>
+      <button id="up" title="Helpful">&#128077; Helpful</button>
+      <button id="down" title="Not helpful">&#128078; Not helpful</button>
+      <span class="hint" id="fb-status"></span>
+    </div>
+  </div>
+
+  <div class="card" id="sources-card" hidden>
+    <label>Sources (retrieved chunks)</label>
+    <div id="sources"></div>
+  </div>
+
+  <p class="hint">Everything here runs against the synthetic corpus in <code>data/docs/</code>.
+     Roles other than <code>guest</code> see their documents only; restricted
+     questions must be refused. This page is served by the API itself at <code>/</code>.</p>
+</div>
+
+<script>
+"use strict";
+const $ = (id) => document.getElementById(id);
+let controller = null;
+let currentRequestId = null;
+
+function setStatus(text, isError) {
+  $("status").textContent = text;
+  $("status").className = isError ? "status-error" : "";
+}
+
+// Parse an SSE byte stream coming from fetch + ReadableStream: split frames
+// on double newlines, then read "event:" and "data:" lines per frame.
+async function streamSSE(response, onEvent) {
+  const reader = response.body.getReader();
+  const decoder = new TextDecoder();
+  let buffer = "";
+  for (;;) {
+    const { value, done } = await reader.read();
+    if (done) break;
+    buffer += decoder.decode(value, { stream: true });
+    let cut;
+    while ((cut = buffer.indexOf("\n\n")) !== -1) {
+      const frame = buffer.slice(0, cut);
+      buffer = buffer.slice(cut + 2);
+      let event = "message";
+      const dataLines = [];
+      for (const line of frame.split("\n")) {
+        if (line.startsWith("event:")) event = line.slice(6).trim();
+        else if (line.startsWith("data:")) dataLines.push(line.slice(5).trim());
+      }
+      if (dataLines.length) onEvent(event, JSON.parse(dataLines.join("\n")));
+    }
+  }
+}
+
+function renderSources(sources) {
+  const box = $("sources");
+  box.innerHTML = "";
+  if (!sources || sources.length === 0) {
+    $("sources-card").hidden = false;
+    box.innerHTML = '<p class="hint">No chunks passed the confidence threshold: the assistant refused rather than guess.</p>';
+    return;
+  }
+  $("sources-card").hidden = false;
+  sources.forEach((s) => {
+    const details = document.createElement("details");
+    details.className = "src";
+    const name = (s.source || "").split("/").pop();
+    details.innerHTML =
+      "<summary>" + (s.title || name) + " — score " + (s.score ?? 0) + "</summary>" +
+      '<div class="meta"><span class="pill">' + s.chunk_id + "</span> " +
+      name + " · rank " + JSON.stringify(s.ranks || {}) + "</div>" +
+      '<div class="snippet">' + (s.snippet || "") + "</div>";
+    box.appendChild(details);
+  });
+}
+
+function feedback(value, button) {
+  if (!currentRequestId) return;
+  const headers = { "Content-Type": "application/json" };
+  const key = $("apikey").value.trim();
+  if (key) headers["X-API-Key"] = key;
+  fetch("/feedback", {
+    method: "POST", headers,
+    body: JSON.stringify({ request_id: currentRequestId, value }),
+  })
+    .then((r) => { $("fb-status").textContent = r.ok ? "Feedback recorded. Thank you." : "Feedback failed (unknown request)."; })
+    .catch(() => { $("fb-status").textContent = "Feedback failed (network)."; });
+  $("up").disabled = true; $("down").disabled = true;
+  button.classList.add(value === "up" ? "on-up" : "on-down");
+}
+
+$("ask").addEventListener("click", async () => {
+  const question = $("question").value.trim();
+  if (!question) { setStatus("Type a question first.", true); return; }
+  $("ask").disabled = true;
+  $("stop").disabled = false;
+  $("answer-card").hidden = false;
+  $("answer").textContent = "";
+  $("feedback").hidden = true;
+  $("fb-status").textContent = "";
+  $("up").disabled = false; $("down").disabled = false;
+  $("up").className = ""; $("down").className = "";
+  setStatus("Asking…", false);
+  controller = new AbortController();
+  const headers = { "Content-Type": "application/json" };
+  const key = $("apikey").value.trim();
+  if (key) headers["X-API-Key"] = key;
+  try {
+    const response = await fetch("/ask", {
+      method: "POST", headers, signal: controller.signal,
+      body: JSON.stringify({
+        question, mode: $("mode").value, k: 4,
+      }),
+    });
+    if (response.status === 401) { setStatus("401: invalid or missing API key.", true); return; }
+    if (response.status === 413) { setStatus("413: question too long.", true); return; }
+    if (!response.ok) {
+      const err = await response.text();
+      setStatus("HTTP " + response.status + ": " + err.slice(0, 200), true);
+      return;
+    }
+    renderSources([]);
+    await streamSSE(response, (event, data) => {
+      if (event === "sources") {
+        renderSources(data.sources);
+      } else if (event === "token") {
+        $("answer").textContent += data.text;
+        setStatus("Streaming…");
+      } else if (event === "done") {
+        currentRequestId = data.request_id;
+        const flags = data.citations && data.citations.invalid
+          ? " — " + data.citations.invalid.length + " invalid citation(s)!" : "";
+        setStatus("Done in " + Math.round(
+          Object.values(data.timings || {}).reduce((a, b) => a + b, 0)) +
+          " ms (no_answer=" + data.no_answer + ")" + flags, false);
+        $("feedback").hidden = false;
+      } else if (event === "error") {
+        setStatus("Error: " + (data.message || "unknown"), true);
+      }
+    });
+  } catch (err) {
+    if (err.name === "AbortError") setStatus("Stopped by user.", false);
+    else setStatus("Request failed: " + err.message, true);
+  } finally {
+    $("ask").disabled = false;
+    $("stop").disabled = true;
+    controller = null;
+  }
+});
+
+$("stop").addEventListener("click", () => { if (controller) controller.abort(); });
+$("up").addEventListener("click", (e) => feedback("up", e.currentTarget));
+$("down").addEventListener("click", (e) => feedback("down", e.currentTarget));
+
+$("upload-btn").addEventListener("click", async () => {
+  const fileInput = $("pdf-files");
+  if (!fileInput.files || fileInput.files.length === 0) {
+    $("upload-status").textContent = "Please select at least one PDF or document first.";
+    $("upload-status").className = "hint status-error";
+    return;
+  }
+  const btn = $("upload-btn");
+  btn.disabled = true;
+  $("upload-status").textContent = "Ingesting and indexing document(s)...";
+  $("upload-status").className = "hint";
+
+  const formData = new FormData();
+  for (let i = 0; i < fileInput.files.length; i++) {
+    formData.append("files", fileInput.files[i]);
+  }
+  const rebuild = $("rebuild-index").checked;
+  formData.append("rebuild", rebuild ? "true" : "false");
+
+  const headers = {};
+  const key = $("apikey").value.trim();
+  if (key) headers["X-API-Key"] = key;
+
+  try {
+    const res = await fetch("/ingest", {
+      method: "POST",
+      headers,
+      body: formData,
+    });
+    if (!res.ok) {
+      const err = await res.text();
+      $("upload-status").textContent = "Upload failed: " + err.slice(0, 100);
+      $("upload-status").className = "hint status-error";
+    } else {
+      const data = await res.json();
+      $("upload-status").textContent = "Successfully indexed " + data.documents + " document(s) (" + data.chunks + " chunks). Ready to ask questions!";
+      $("upload-status").className = "hint";
+      fileInput.value = "";
+    }
+  } catch (err) {
+    $("upload-status").textContent = "Upload error: " + err.message;
+    $("upload-status").className = "hint status-error";
+  } finally {
+    btn.disabled = false;
+  }
+});
+</script>
+</body>
+</html>

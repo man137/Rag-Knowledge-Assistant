@@ -1,0 +1,23 @@
+# never bake secrets or local state into the image
+.env
+.env.*
+.venv
+venv
+
+# local caches, indexes and logs
+__pycache__
+*.pyc
+.pytest_cache
+.ruff_cache
+indexes
+cache
+logs
+eval_out
+*.db
+*.npy
+
+# tooling
+.git
+.github
+node_modules
+docker-compose*.yml

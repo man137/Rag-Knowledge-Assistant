@@ -1,0 +1,13 @@
+Answer the question using only the context below.
+
+Rules:
+- Answer only from the context. Do not use outside knowledge.
+- After each claim, cite the chunk that supports it in the form [source:chunk_id].
+- If the context does not contain the answer, reply exactly with: I don't know based on the provided documents.
+
+Context:
+{context}
+
+Question: {question}
+
+Answer:

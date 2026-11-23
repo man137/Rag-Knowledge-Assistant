@@ -1,0 +1,14 @@
+# Deterministic lint configuration for `make lint`.
+# ruff itself is pinned in requirements-dev.txt so CI and laptops agree.
+line-length = 100
+
+[lint]
+# E/W pycodestyle, F pyflakes, I import order, B bugbear, C4 comprehensions.
+select = ["E", "W", "F", "I", "B", "C4"]
+
+[lint.per-file-ignores]
+# FastAPI's documented dependency pattern puts File()/Form()/Header() calls
+# in argument defaults.
+"api/main.py" = ["B008"]
+# tests import fakes deliberately (test files assert on the re-exports).
+"tests/fakes.py" = ["F401"]
