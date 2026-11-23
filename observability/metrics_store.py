@@ -67,9 +67,14 @@ class MetricsStore:
 
     def __init__(self, db_path: str | Path) -> None:
         self.db_path = str(db_path)
-        Path(db_path).parent.mkdir(parents=True, exist_ok=True)
+        try:
+            Path(db_path).parent.mkdir(parents=True, exist_ok=True)
+            self._conn = sqlite3.connect(self.db_path, check_same_thread=False)
+        except (PermissionError, OSError):
+            import tempfile
+            self.db_path = str(Path(tempfile.gettempdir()) / Path(db_path).name)
+            self._conn = sqlite3.connect(self.db_path, check_same_thread=False)
         self._lock = threading.Lock()
-        self._conn = sqlite3.connect(self.db_path, check_same_thread=False)
         self._conn.execute("PRAGMA journal_mode=WAL")
         self._conn.executescript(SCHEMA)
         self._conn.commit()

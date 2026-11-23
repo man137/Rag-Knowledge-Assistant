@@ -39,8 +39,13 @@ class CrmMock:
 
     def __init__(self, db_path: str | Path) -> None:
         self.db_path = str(db_path)
-        Path(db_path).parent.mkdir(parents=True, exist_ok=True)
-        self._conn = sqlite3.connect(self.db_path)
+        try:
+            Path(db_path).parent.mkdir(parents=True, exist_ok=True)
+            self._conn = sqlite3.connect(self.db_path)
+        except (PermissionError, OSError):
+            import tempfile
+            self.db_path = str(Path(tempfile.gettempdir()) / Path(db_path).name)
+            self._conn = sqlite3.connect(self.db_path)
         self._conn.executescript(_SCHEMA)
         self._conn.commit()
 
